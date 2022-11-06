@@ -18,7 +18,7 @@ func (f *ControllerFlags) NewControllerCommand() *cobra.Command {
 	ctx := context.TODO()
 	cmd := &cobra.Command{
 		Use:   "manager",
-		Short: "helloworld example addon",
+		Short: "helloworld example addon manager",
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := f.StartController(ctx); err != nil {
 				klog.Fatal(err)

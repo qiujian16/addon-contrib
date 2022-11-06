@@ -1,0 +1,23 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: example-addon-manager
+  labels:
+    app: example-addon-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example-addon-manager
+  template:
+    metadata:
+      labels:
+        app: example-addon-manager
+    spec:
+      serviceAccountName: example-addon-sa
+      containers:
+      - name: example-addon-manager
+        image: quay.io/open-cluster-management/addon-contrib/addon-example:latest
+        imagePullPolicy: IfNotPresent
+        args:
+          - "manager"

@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	defaultExampleImage   = "quay.io/open-cluster-management/addon-contrib/addon-examples:latest"
+	defaultExampleImage   = "quay.io/open-cluster-management/addon-contrib/addon-example:latest"
 	AddonName             = "hellospoke"
-	InstallationNamespace = "default"
+	InstallationNamespace = "open-cluster-management-agent-addon"
 )
 
 //go:embed template
@@ -79,8 +79,8 @@ func addonRBAC(kubeConfig *rest.Config) agent.PermissionConfigFunc {
 				Namespace: cluster.Name,
 			},
 			Rules: []rbacv1.PolicyRule{
-				{Verbs: []string{"get", "list", "watch"}, Resources: []string{"hellospokes"}, APIGroups: []string{""}},
-				{Verbs: []string{"update", "patch"}, Resources: []string{"hellospokes/status"}, APIGroups: []string{"addon.open-cluster-management.io"}},
+				{Verbs: []string{"get", "list", "watch", "create", "update", "delete"}, Resources: []string{"hellospokes"}, APIGroups: []string{"example.open-cluster-management.io"}},
+				{Verbs: []string{"update", "patch"}, Resources: []string{"hellospokes/status"}, APIGroups: []string{"example.open-cluster-management.io"}},
 			},
 		}
 
@@ -145,6 +145,7 @@ func NewAddonManager(kubeConfig *rest.Config) (addonmanager.AddonManager, error)
 		WithAgentHealthProber(
 			utils.NewDeploymentProber(types.NamespacedName{Namespace: InstallationNamespace, Name: "hellospoke-agent"}),
 		).
+		WithInstallStrategy(agent.InstallAllStrategy(InstallationNamespace)).
 		BuildTemplateAgentAddon()
 	if err != nil {
 		return nil, err

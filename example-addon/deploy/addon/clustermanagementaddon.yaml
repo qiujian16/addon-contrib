@@ -1,0 +1,8 @@
+apiVersion: addon.open-cluster-management.io/v1alpha1
+kind: ClusterManagementAddOn
+metadata:
+  name: example-addon
+spec:
+  addOnMeta:
+    displayName: Example Addon
+    description: "example-addon is an example addon that copys a CR from spoke to hub"

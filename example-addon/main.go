@@ -27,6 +27,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -34,9 +35,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"open-cluster-management.io/addon-contrib/example-addon/addonmanager"
-	openclustermanagementiov1alpha1 "open-cluster-management.io/addon-contrib/example-addon/api/v1alpha1"
+	ocmv1alpha1 "open-cluster-management.io/addon-contrib/example-addon/api/v1alpha1"
 	"open-cluster-management.io/addon-contrib/example-addon/controllers"
-	//+kubebuilder:scaffold:imports
 )
 
 var (
@@ -46,9 +46,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
-	utilruntime.Must(openclustermanagementiov1alpha1.AddToScheme(scheme))
-	//+kubebuilder:scaffold:scheme
+	utilruntime.Must(ocmv1alpha1.AddToScheme(scheme))
 }
 
 func main() {
@@ -81,8 +79,6 @@ func newCommand() *cobra.Command {
 
 // AgentFlags provides the "normal" controller flags
 type AgentFlags struct {
-	// KubeConfigFile points to a kubeconfig file if you don't want to use the in cluster config
-	KubeConfigFile string
 	// HubKubeConfigFile to a kubeconfig file connect to hub
 	HubKubeConfigFile string
 	// ClusterName is the name of the cluster agent is running
@@ -93,7 +89,7 @@ func (f *AgentFlags) NewCommand() *cobra.Command {
 	ctx := context.TODO()
 	cmd := &cobra.Command{
 		Use:   "agent",
-		Short: "helloworld example addon",
+		Short: "helloworld example addon agent",
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := f.startAgent(ctx); err != nil {
 				klog.Fatal(err)
@@ -111,33 +107,37 @@ func (f *AgentFlags) AddFlags(cmd *cobra.Command) {
 	flags := cmd.Flags()
 	// This command only supports reading from config
 
-	flags.StringVar(&f.KubeConfigFile, "kubeconfig", f.KubeConfigFile, "Location of the master configuration file to run from.")
 	flags.StringVar(&f.HubKubeConfigFile, "hub-kubeconfig", f.HubKubeConfigFile, "Location of the hub configuration file to run from.")
-	flags.StringVar(&f.ClusterName, "cluster", f.ClusterName, "Name of the cluster the agent is running.")
+	flags.StringVar(&f.ClusterName, "cluster-name", f.ClusterName, "Name of the cluster the agent is running.")
 }
 
 func (a *AgentFlags) startAgent(ctx context.Context) error {
-	hubconfig, err := clientcmd.BuildConfigFromFlags("", a.HubKubeConfigFile)
+	hubConfig, err := clientcmd.BuildConfigFromFlags("", a.HubKubeConfigFile)
 	if err != nil {
 		return err
 	}
 
-	mgr, err := ctrl.NewManager(hubconfig, ctrl.Options{
+	hubClient, err := client.New(hubConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		return fmt.Errorf("failed to create hubClient, err: %w", err)
+	}
+
+	spokeConfig := ctrl.GetConfigOrDie()
+	mgr, err := ctrl.NewManager(spokeConfig, ctrl.Options{
 		Scheme:         scheme,
 		LeaderElection: false,
-		Namespace:      a.ClusterName,
 	})
 	if err != nil {
 		return err
 	}
 
 	if err = (&controllers.HelloSpokeReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:      mgr.GetClient(),
+		HubClient:   hubClient,
+		ClusterName: a.ClusterName,
 	}).SetupWithManager(mgr); err != nil {
 		return err
 	}
-	//+kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

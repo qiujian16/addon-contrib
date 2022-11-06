@@ -20,57 +20,58 @@ import (
 	"context"
 
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	openclustermanagementiov1alpha1 "open-cluster-management.io/addon-contrib/example-addon/api/v1alpha1"
+	ocmv1alpha1 "open-cluster-management.io/addon-contrib/example-addon/api/v1alpha1"
 )
 
 // HelloSpokeReconciler reconciles a HelloSpoke object
 type HelloSpokeReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	localClient kubernetes.Interface
+	HubClient   client.Client
+	ClusterName string
 }
 
-//+kubebuilder:rbac:groups=open-cluster-management.io.open-cluster-management.io,resources=hellospokes,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=open-cluster-management.io.open-cluster-management.io,resources=hellospokes/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=open-cluster-management.io.open-cluster-management.io,resources=hellospokes/finalizers,verbs=update
+//+kubebuilder:rbac:groups=example.open-cluster-management.io,resources=hellospokes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=example.open-cluster-management.io,resources=hellospokes/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=example.open-cluster-management.io,resources=hellospokes/finalizers,verbs=update
 
-// Reconcile reads server info from cluster-info configmap and report to hub.
+// Reconcile copys the HelloSpoke from spoke to hub
 func (r *HelloSpokeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := log.FromContext(ctx)
+	log.Info("reconciling HelloSpoke...")
+	defer log.Info("done reconciling HelloSpoke")
 
-	var obj *openclustermanagementiov1alpha1.HelloSpoke
-	err := r.Client.Get(ctx, req.NamespacedName, obj)
+	var helloSpoke *ocmv1alpha1.HelloSpoke
+	err := r.Client.Get(ctx, req.NamespacedName, helloSpoke)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	cm, err := r.localClient.CoreV1().ConfigMaps("kube-public").Get(ctx, "cluster-info", metav1.GetOptions{})
+	hubHelloSpoke := ocmv1alpha1.HelloSpoke{}
+	err = r.HubClient.Get(ctx, types.NamespacedName{Namespace: r.ClusterName, Name: helloSpoke.Name}, &hubHelloSpoke)
 	switch {
 	case errors.IsNotFound(err):
-		obj.Status.SpokeURL = "NA"
+		hubHelloSpoke.Name = helloSpoke.Name
+		hubHelloSpoke.Namespace = r.ClusterName
+		hubHelloSpoke.Status = helloSpoke.Status
+		if err = r.HubClient.Create(ctx, &hubHelloSpoke); err != nil {
+			return ctrl.Result{}, err
+		}
 	case err != nil:
 		return ctrl.Result{}, err
 	}
 
-	if server, ok := cm.Data["server"]; ok {
-		obj.Status.SpokeURL = server
-	} else {
-		obj.Status.SpokeURL = "NA"
-	}
-
-	return ctrl.Result{}, r.Client.Update(ctx, obj)
+	hubHelloSpoke.Status = helloSpoke.Status
+	return ctrl.Result{}, r.Client.Update(ctx, &hubHelloSpoke)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *HelloSpokeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&openclustermanagementiov1alpha1.HelloSpoke{}).
+		For(&ocmv1alpha1.HelloSpoke{}).
 		Complete(r)
 }
